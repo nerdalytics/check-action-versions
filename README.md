@@ -71,12 +71,21 @@ gh api repos/nerdalytics/check-action-versions/commits/v1.0.1 --jq .sha
 gh api repos/nerdalytics/check-action-versions/commits/v1 --jq .sha
 ```
 
-### Which tag to pin to — exact release or floating major
+### What the comment means — exact release or floating major
 
-- **Exact release** (`# v1.0.1`): the SHA never changes underneath you. You consciously bump when a new release ships — and this action itself will open that PR via its normal scan.
-- **Floating major** (`# v1`): the `v1` tag re-points to each new `v1.x.y`. Simpler in theory, but leaves a narrow window where a compromised maintainer could move `v1` to a malicious commit. For repos with a strict SHA-pin policy, prefer the exact release.
+When you pin by SHA, the 40-char hash is what GitHub resolves. The comment (`# v1`, `# v1.0.1`) is documentation — it does not affect what runs. Both of these pins execute the same action:
 
-The auto-updater always writes the exact release tag in the comment (never the floating `v1`), so once this action rewrites a pin for you, it stays on exact-release form.
+```yaml
+- uses: nerdalytics/check-action-versions@0d95f1ed70576169ff3c297057b7e3fcfb909a1a # v1
+- uses: nerdalytics/check-action-versions@0d95f1ed70576169ff3c297057b7e3fcfb909a1a # v1.0.2
+```
+
+Moving the `v1` floating tag on GitHub has no effect on any workflow pinned by SHA — only the SHA matters. Both comment forms are equally secure.
+
+When a new release ships and the SHA changes, this action's auto-update path opens a PR rewriting your pin to the new SHA + the exact release name in the comment (`# v1.0.3`, never `# v1`). So whatever comment you type up front will normalize to exact-release form on first update. The choice is purely cosmetic:
+
+- `# v1.0.2` — concrete, matches what the auto-updater writes. Best if you want the comment to reflect the exact version you vetted.
+- `# v1` — brief, handy when grabbing the SHA via `gh api repos/.../commits/v1 --jq .sha`. Will get refreshed by the auto-updater on the next release.
 
 ## Permissions
 
