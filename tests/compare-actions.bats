@@ -38,3 +38,40 @@ EOF
   [[ "$output" != *"actions/setup-node"* ]]
   assert_output_contains "has_outdated=true"
 }
+
+@test "compare-actions: flags outdated when SHAs match but tags differ (floating pin behind exact release)" {
+  cat > actions-latest.txt <<EOF
+nerdalytics/check-action-versions|same-sha|v1|same-sha|v1.0.0
+EOF
+
+  run bash "${SCRIPT_DIR}/compare-actions.sh"
+  [ "$status" -eq 0 ]
+  run cat actions-outdated.txt
+  [[ "$output" == *"nerdalytics/check-action-versions|same-sha|v1|same-sha|v1.0.0"* ]]
+  assert_output_contains "has_outdated=true"
+}
+
+@test "compare-actions: up-to-date when both SHAs and tags match exactly" {
+  cat > actions-latest.txt <<EOF
+actions/checkout|same-sha|v5.0.0|same-sha|v5.0.0
+EOF
+
+  run bash "${SCRIPT_DIR}/compare-actions.sh"
+  [ "$status" -eq 0 ]
+  run cat actions-outdated.txt
+  [ -z "$output" ]
+  assert_output_contains "has_outdated=false"
+}
+
+@test "compare-actions: up-to-date when SHAs match and current_tag is empty" {
+  # No comment in the pin -> current_tag is empty. Only SHA comparison matters.
+  cat > actions-latest.txt <<EOF
+actions/checkout|same-sha||same-sha|v5.0.0
+EOF
+
+  run bash "${SCRIPT_DIR}/compare-actions.sh"
+  [ "$status" -eq 0 ]
+  run cat actions-outdated.txt
+  [ -z "$output" ]
+  assert_output_contains "has_outdated=false"
+}
