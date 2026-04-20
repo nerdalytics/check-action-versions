@@ -1,5 +1,5 @@
 name: 'Check Action Versions'
-description: 'Audit SHA-pinned GitHub Actions across workflow files. Opens a security issue and automated PR when outdated actions are detected.'
+description: 'Reusable GitHub workflow: audit SHA-pinned actions across repos, auto-PR updates.'
 branding:
   icon: 'shield'
   color: 'blue'
