@@ -34,6 +34,13 @@ while IFS='|' read -r action current_sha current_tag; do
   # Get latest release tag
   latest_tag=$(gh api "repos/${action}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
 
+  # On 404 (no published releases), gh leaks the error-response JSON to
+  # stdout — strip it silently rather than complain about "not strict semver"
+  # with a raw error body. The tags-API fallback below handles the case.
+  if [[ "$latest_tag" == *'{'* ]]; then
+    latest_tag=""
+  fi
+
   # Validate tag is strict semver
   if [[ -n "$latest_tag" ]] && [[ ! "$latest_tag" =~ $SEMVER_RE ]]; then
     echo "  Warning: latest release tag '${latest_tag}' is not strict semver, trying tags API"
