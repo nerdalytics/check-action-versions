@@ -1,0 +1,214 @@
+name: Check Action Versions
+
+on:
+  workflow_call:
+    inputs:
+      committer-name:
+        description: "Git user.name for the automated commit"
+        type: string
+        required: true
+      committer-email:
+        description: "Git user.email for the automated commit"
+        type: string
+        required: true
+      commit-prefix:
+        description: "Prefix for commit message and PR title (e.g., 'chore(core):'). Empty = plain prose."
+        type: string
+        required: false
+        default: ""
+      scan-globs:
+        description: "Newline-separated glob list of workflow files to scan."
+        type: string
+        required: false
+        default: ".github/workflows/*.yml"
+      branch-name:
+        description: "PR branch name."
+        type: string
+        required: false
+        default: "update-github-actions"
+      outdated-behavior:
+        description: "both | pr-only | issue-only | dry-run"
+        type: string
+        required: false
+        default: "both"
+      up-to-date-behavior:
+        description: "close | keep | silent"
+        type: string
+        required: false
+        default: "close"
+      pr-labels:
+        description: "Comma-separated labels for the PR."
+        type: string
+        required: false
+        default: ""
+      issue-labels:
+        description: "Comma-separated labels for the issue."
+        type: string
+        required: false
+        default: ""
+      issue-title:
+        description: "Stable title used to find/update the tracking issue across runs."
+        type: string
+        required: false
+        default: "Security: Outdated GitHub Actions detected"
+      signing-method:
+        description: "ssh | gpg | '' (unsigned)"
+        type: string
+        required: false
+        default: ""
+    secrets:
+      GH_PAT:
+        required: true
+      SIGNING_KEY:
+        required: false
+      SIGNING_PASSPHRASE:
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate signing secrets against signing-method
+        if: inputs.signing-method != ''
+        env:
+          SIGNING_METHOD: ${{ inputs.signing-method }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          if [[ -n "$SIGNING_METHOD" && -z "$SIGNING_KEY" ]]; then
+            echo "ERROR: signing-method is '$SIGNING_METHOD' but SIGNING_KEY secret is empty."
+            echo "Either pass SIGNING_KEY or set signing-method to ''."
+            exit 1
+          fi
+          case "$SIGNING_METHOD" in
+            ssh|gpg) ;;
+            *) echo "ERROR: signing-method must be 'ssh', 'gpg', or '' — got: '$SIGNING_METHOD'"; exit 1 ;;
+          esac
+
+      - name: Checkout caller repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Checkout action source at pinned ref
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: nerdalytics/check-action-versions
+          ref: ${{ github.workflow_ref }}
+          path: .check-action-versions-src
+
+      - name: Configure git identity
+        env:
+          COMMITTER_NAME: ${{ inputs.committer-name }}
+          COMMITTER_EMAIL: ${{ inputs.committer-email }}
+        run: |
+          git config user.name "$COMMITTER_NAME"
+          git config user.email "$COMMITTER_EMAIL"
+
+      - name: Scan workflow files for actions
+        id: scan
+        env:
+          SCAN_GLOBS: ${{ inputs.scan-globs }}
+        run: bash .check-action-versions-src/scripts/scan-actions.sh
+
+      - name: Resolve latest versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .check-action-versions-src/scripts/resolve-latest.sh
+
+      - name: Compare current vs latest
+        id: compare
+        run: bash .check-action-versions-src/scripts/compare-actions.sh
+
+      - name: Generate report
+        if: steps.compare.outputs.has_outdated == 'true'
+        run: bash .check-action-versions-src/scripts/generate-report.sh
+
+      - name: Create or update tracking issue
+        if: >-
+          steps.compare.outputs.has_outdated == 'true' &&
+          (inputs.outdated-behavior == 'both' || inputs.outdated-behavior == 'issue-only')
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_TITLE: ${{ inputs.issue-title }}
+          ISSUE_LABELS: ${{ inputs.issue-labels }}
+        run: bash .check-action-versions-src/scripts/manage-issue.sh
+
+      - name: Apply updates to workflow files
+        if: >-
+          steps.compare.outputs.has_outdated == 'true' &&
+          (inputs.outdated-behavior == 'both' || inputs.outdated-behavior == 'pr-only')
+        id: apply
+        run: bash .check-action-versions-src/scripts/apply-updates.sh
+
+      - name: Configure SSH signing
+        if: steps.apply.outputs.changes_made == '1' && inputs.signing-method == 'ssh'
+        env:
+          SSH_SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SSH_PASSPHRASE: ${{ secrets.SIGNING_PASSPHRASE }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_SIGNING_KEY" > ~/.ssh/signing_key
+          chmod 600 ~/.ssh/signing_key
+          if [[ -n "$SSH_PASSPHRASE" ]]; then
+            ssh-keygen -p -P "$SSH_PASSPHRASE" -N "" -f ~/.ssh/signing_key
+          fi
+          git config gpg.format ssh
+          git config user.signingkey ~/.ssh/signing_key
+          git config commit.gpgsign true
+
+      - name: Configure GPG signing
+        if: steps.apply.outputs.changes_made == '1' && inputs.signing-method == 'gpg'
+        env:
+          GPG_SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.SIGNING_PASSPHRASE }}
+        run: |
+          echo "$GPG_SIGNING_KEY" | gpg --batch --import
+          KEY_ID=$(gpg --list-secret-keys --keyid-format=long | awk '/^sec/{split($2,a,"/"); print a[2]; exit}')
+          if [[ -n "$GPG_PASSPHRASE" ]]; then
+            KEYGRIP=$(gpg --with-keygrip --list-secret-keys "$KEY_ID" | awk '/Keygrip/{print $3; exit}')
+            HEX_PASS=$(printf '%s' "$GPG_PASSPHRASE" | xxd -p -c 1024 | tr -d '\n')
+            gpg-connect-agent "PRESET_PASSPHRASE $KEYGRIP -1 $HEX_PASS" /bye
+          fi
+          git config gpg.format openpgp
+          git config user.signingkey "$KEY_ID"
+          git config commit.gpgsign true
+
+      - name: Create branch and commit
+        if: steps.apply.outputs.changes_made == '1'
+        id: commit
+        env:
+          BRANCH_NAME: ${{ inputs.branch-name }}
+          COMMIT_PREFIX: ${{ inputs.commit-prefix }}
+        run: bash .check-action-versions-src/scripts/commit-changes.sh
+
+      - name: Push and create PR
+        if: >-
+          steps.commit.outputs.has_changes == 'true' &&
+          (inputs.outdated-behavior == 'both' || inputs.outdated-behavior == 'pr-only')
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
+          BRANCH_NAME: ${{ inputs.branch-name }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          COMMIT_PREFIX: ${{ inputs.commit-prefix }}
+          PR_LABELS: ${{ inputs.pr-labels }}
+        run: bash .check-action-versions-src/scripts/manage-pr.sh
+
+      - name: Close issue and PR if all up-to-date
+        if: >-
+          steps.compare.outputs.has_outdated == 'false' &&
+          inputs.up-to-date-behavior == 'close'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_TITLE: ${{ inputs.issue-title }}
+          BRANCH_NAME: ${{ inputs.branch-name }}
+        run: bash .check-action-versions-src/scripts/close-if-current.sh
