@@ -278,3 +278,5 @@ Your workflows may be in `.yaml` files, not `.yml`. Override `scan-globs`.
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+<!-- ci smoke -->
