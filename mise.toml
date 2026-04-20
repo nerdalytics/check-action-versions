@@ -1,0 +1,7 @@
+[tools]
+gh = "latest"
+jq = "latest"
+shellcheck = "latest"
+shfmt = "latest"
+bats = "latest"
+actionlint = "latest"

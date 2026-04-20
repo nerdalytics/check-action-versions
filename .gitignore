@@ -1,0 +1,56 @@
+# Ignore everything by default
+*
+*/
+
+# Then explicitly allow what we want
+
+# Folders
+!.github/
+!.github/**/
+!.github/**/*.yml
+!.github/**/*.yaml
+!scripts/
+!scripts/*.sh
+!tests/
+!tests/**/
+!tests/**/*.bats
+!tests/**/*.bash
+!tests/**/*.yml
+!tests/**/*.yaml
+!tests/**/*.json
+!tests/**/*.txt
+# Explicitly allow the mock `gh` binary (extensionless script)
+!tests/helpers/bin/gh
+
+# Files in root
+!.editorconfig
+!.gitattributes
+!.gitignore
+!AGENTS.md
+!CLAUDE.md
+!CODE_OF_CONDUCT.md
+!CONTRIBUTING.md
+!LICENSE
+!README.md
+!mise.toml
+
+# Allow markdown anywhere
+!**/*.md
+
+# Explicitly ignore local-only config
+mise.local.toml
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Defensive: tool-generated artifacts
+**/node_modules/**
+coverage/
+*~

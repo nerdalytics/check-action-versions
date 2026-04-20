@@ -1,0 +1,14 @@
+name: Malformed fixture
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # local action — should be skipped
+      - uses: ./local-action
+      # reusable workflow — should be skipped
+      - uses: ./.github/workflows/reusable.yml
+      # invalid format — should be skipped
+      - uses: notvalid
+      # valid
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
