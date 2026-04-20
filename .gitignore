@@ -34,6 +34,7 @@
 !CONTRIBUTING.md
 !LICENSE
 !README.md
+!action.yml
 !mise.toml
 
 # Allow markdown anywhere
