@@ -20,7 +20,7 @@ EXISTING_ISSUE=$(gh issue list --state open --search "in:title ${ISSUE_TITLE}" -
 if [[ -n "$EXISTING_ISSUE" ]]; then
   gh issue edit "$EXISTING_ISSUE" --body-file outdated-actions-report.md
   echo "Updated issue #${EXISTING_ISSUE}"
-  echo "issue_number=${EXISTING_ISSUE}" >> "$GITHUB_OUTPUT"
+  echo "issue_number=${EXISTING_ISSUE}" >>"$GITHUB_OUTPUT"
 else
   NEW_ISSUE_URL=$(gh issue create \
     --title "$ISSUE_TITLE" \
@@ -28,5 +28,5 @@ else
     --body-file outdated-actions-report.md)
   NEW_ISSUE_NUMBER="${NEW_ISSUE_URL##*/}"
   echo "Created new issue #${NEW_ISSUE_NUMBER}"
-  echo "issue_number=${NEW_ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+  echo "issue_number=${NEW_ISSUE_NUMBER}" >>"$GITHUB_OUTPUT"
 fi

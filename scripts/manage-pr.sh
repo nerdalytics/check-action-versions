@@ -29,7 +29,7 @@ if [[ -n "$EXISTING_PR" ]]; then
 fi
 
 # Delete remote branch if it still exists
-if git ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null 2>&1; then
+if git ls-remote --exit-code --heads origin "$BRANCH_NAME" >/dev/null 2>&1; then
   echo "Deleting existing remote branch"
   git push origin --delete "$BRANCH_NAME" || true
 fi
@@ -48,7 +48,7 @@ Updates GitHub Actions to their latest SHA-pinned versions.
 while IFS='|' read -r action _ current_tag _ latest_tag; do
   PR_BODY="${PR_BODY}
 | \`${action}\` | ${current_tag:-unknown} | ${latest_tag} |"
-done < actions-outdated.txt
+done <actions-outdated.txt
 
 PR_BODY="${PR_BODY}
 

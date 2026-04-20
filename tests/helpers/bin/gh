@@ -9,23 +9,23 @@ FIXTURE_DIR="$(cd "$(dirname "$0")/../../fixtures/gh" && pwd)"
 # Flatten args to a stable fixture name
 args="$*"
 case "$args" in
-  "api repos/actions/checkout/releases/latest --jq .tag_name")
-    jq -r .tag_name "${FIXTURE_DIR}/actions-checkout-release.json"
-    ;;
-  "api repos/actions/checkout/git/refs/tags/v5.0.0")
-    cat "${FIXTURE_DIR}/actions-checkout-tag-v5.0.0.json"
-    ;;
-  "api repos/actions/checkout/tags --jq .[].name")
-    jq -r '.[].name' "${FIXTURE_DIR}/actions-checkout-tags.json"
-    ;;
-  "api repos/actions/setup-node/releases/latest --jq .tag_name")
-    jq -r .tag_name "${FIXTURE_DIR}/actions-setup-node-release.json"
-    ;;
-  "api repos/actions/setup-node/git/refs/tags/v6.0.0")
-    cat "${FIXTURE_DIR}/actions-setup-node-tag-v6.0.0.json"
-    ;;
-  *)
-    echo "mock-gh: no fixture for args: $args" >&2
-    exit 1
-    ;;
+"api repos/actions/checkout/releases/latest --jq .tag_name")
+	jq -r .tag_name "${FIXTURE_DIR}/actions-checkout-release.json"
+	;;
+"api repos/actions/checkout/git/refs/tags/v5.0.0")
+	cat "${FIXTURE_DIR}/actions-checkout-tag-v5.0.0.json"
+	;;
+"api repos/actions/checkout/tags --jq .[].name")
+	jq -r '.[].name' "${FIXTURE_DIR}/actions-checkout-tags.json"
+	;;
+"api repos/actions/setup-node/releases/latest --jq .tag_name")
+	jq -r .tag_name "${FIXTURE_DIR}/actions-setup-node-release.json"
+	;;
+"api repos/actions/setup-node/git/refs/tags/v6.0.0")
+	cat "${FIXTURE_DIR}/actions-setup-node-tag-v6.0.0.json"
+	;;
+*)
+	echo "mock-gh: no fixture for args: $args" >&2
+	exit 1
+	;;
 esac

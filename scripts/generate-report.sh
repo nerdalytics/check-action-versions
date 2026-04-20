@@ -5,7 +5,7 @@ set -euo pipefail
 # Input:  actions-outdated.txt (action|current_sha|current_tag|latest_sha|latest_tag)
 # Output: outdated-actions-report.md
 
-cat > outdated-actions-report.md << 'HEADER'
+cat >outdated-actions-report.md <<'HEADER'
 ## Outdated GitHub Actions Detected
 
 The following actions have newer versions available:
@@ -15,10 +15,10 @@ The following actions have newer versions available:
 HEADER
 
 while IFS='|' read -r action current_sha current_tag latest_sha latest_tag; do
-  echo "| \`${action}\` | ${current_tag:-${current_sha:0:7}} | ${latest_tag} | \`${action}@${latest_sha} # ${latest_tag}\` |" >> outdated-actions-report.md
-done < actions-outdated.txt
+  echo "| \`${action}\` | ${current_tag:-${current_sha:0:7}} | ${latest_tag} | \`${action}@${latest_sha} # ${latest_tag}\` |" >>outdated-actions-report.md
+done <actions-outdated.txt
 
-cat >> outdated-actions-report.md << 'FOOTER'
+cat >>outdated-actions-report.md <<'FOOTER'
 
 ### How to Update
 

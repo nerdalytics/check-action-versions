@@ -26,7 +26,7 @@ resolve_tag_sha() {
   echo "$obj_sha"
 }
 
-: > actions-latest.txt
+: >actions-latest.txt
 
 while IFS='|' read -r action current_sha current_tag; do
   echo "Resolving ${action}..."
@@ -42,9 +42,9 @@ while IFS='|' read -r action current_sha current_tag; do
 
   # Fallback: tags API, find first strict semver tag
   if [[ -z "$latest_tag" ]]; then
-    latest_tag=$(gh api "repos/${action}/tags" --jq '.[].name' 2>/dev/null \
-      | grep -E "$SEMVER_RE" \
-      | head -1 || echo "")
+    latest_tag=$(gh api "repos/${action}/tags" --jq '.[].name' 2>/dev/null |
+      grep -E "$SEMVER_RE" |
+      head -1 || echo "")
   fi
 
   if [[ -z "$latest_tag" ]]; then
@@ -67,8 +67,8 @@ while IFS='|' read -r action current_sha current_tag; do
     continue
   fi
 
-  echo "${action}|${current_sha}|${current_tag}|${latest_sha}|${latest_tag}" >> actions-latest.txt
+  echo "${action}|${current_sha}|${current_tag}|${latest_sha}|${latest_tag}" >>actions-latest.txt
   echo "  ${latest_tag} (${latest_sha:0:7})"
 
   sleep "${RATE_LIMIT_SLEEP:-0.5}"
-done < actions-current.txt
+done <actions-current.txt

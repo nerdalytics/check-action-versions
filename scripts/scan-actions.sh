@@ -18,7 +18,7 @@ mapfile -t WORKFLOWS < <(
     [[ -z "$glob" ]] && continue
     # shellcheck disable=SC2086
     compgen -G "$glob" || true
-  done <<< "$SCAN_GLOBS"
+  done <<<"$SCAN_GLOBS"
 )
 
 for workflow in "${WORKFLOWS[@]}"; do
@@ -45,8 +45,8 @@ for workflow in "${WORKFLOWS[@]}"; do
       echo "${action}|${sha}|${comment}"
       ((ACTION_COUNT++)) || true
     fi
-  done < "$workflow"
-done > actions-current.txt
+  done <"$workflow"
+done >actions-current.txt
 
 echo "Found ${ACTION_COUNT} unique actions"
-echo "action_count=${ACTION_COUNT}" >> "$GITHUB_OUTPUT"
+echo "action_count=${ACTION_COUNT}" >>"$GITHUB_OUTPUT"

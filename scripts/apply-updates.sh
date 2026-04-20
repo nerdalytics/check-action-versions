@@ -35,6 +35,6 @@ while IFS='|' read -r action _ _ latest_sha latest_tag; do
       CHANGES_MADE=1
     fi
   done
-done < actions-outdated.txt
+done <actions-outdated.txt
 
-echo "changes_made=${CHANGES_MADE}" >> "$GITHUB_OUTPUT"
+echo "changes_made=${CHANGES_MADE}" >>"$GITHUB_OUTPUT"
