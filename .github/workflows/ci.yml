@@ -1,0 +1,31 @@
+name: CI
+permissions:
+  contents: read
+on:
+  pull_request:
+    branches: [trunk]
+  push:
+    branches: [trunk]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          cache: true
+
+      - name: shellcheck
+        run: shellcheck scripts/*.sh tests/helpers/bin/gh
+
+      - name: shfmt (diff-only)
+        run: shfmt -d scripts/*.sh tests/helpers/bin/gh
+
+      - name: actionlint
+        run: actionlint .github/workflows/*.yml
+
+      - name: bats
+        run: bats tests/

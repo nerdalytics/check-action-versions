@@ -5,3 +5,26 @@ shellcheck = "latest"
 shfmt = "latest"
 bats = "latest"
 actionlint = "latest"
+
+[tasks.lint]
+description = "Run shellcheck + actionlint"
+run = [
+  "shellcheck scripts/*.sh tests/helpers/bin/gh",
+  "actionlint .github/workflows/*.yml",
+]
+
+[tasks.format]
+description = "Format shell scripts with shfmt"
+run = "shfmt -w scripts/*.sh tests/helpers/bin/gh"
+
+[tasks.format-check]
+description = "Verify shell scripts are formatted"
+run = "shfmt -d scripts/*.sh tests/helpers/bin/gh"
+
+[tasks.test]
+description = "Run bats test suite"
+run = "bats tests/"
+
+[tasks.check]
+description = "Lint, format-check, and test"
+depends = ["lint", "format-check", "test"]
