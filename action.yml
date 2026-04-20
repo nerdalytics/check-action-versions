@@ -48,14 +48,14 @@ inputs:
     required: false
     default: ""
   gh-pat:
-    description: "Personal Access Token for creating issues/PRs and pushing. Pass via ${{ secrets.YOUR_PAT }} at the call site for masking."
+    description: "Personal Access Token for creating issues/PRs and pushing. Pass a repository secret at the call site for masking."
     required: true
   signing-key:
-    description: "SSH or GPG private key (required iff signing-method != ''). Pass via ${{ secrets.YOUR_KEY }}."
+    description: "SSH or GPG private key (required iff signing-method != ''). Pass a repository secret at the call site."
     required: false
     default: ""
   signing-passphrase:
-    description: "Passphrase for signing-key (optional; only used if key is encrypted). Pass via ${{ secrets.YOUR_PASSPHRASE }}."
+    description: "Passphrase for signing-key (optional; only used if key is encrypted). Pass a repository secret at the call site."
     required: false
     default: ""
 
