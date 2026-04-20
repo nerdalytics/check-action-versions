@@ -9,6 +9,8 @@
 !.github/**/
 !.github/**/*.yml
 !.github/**/*.yaml
+# Extensionless GitHub meta files
+!.github/CODEOWNERS
 !scripts/
 !scripts/*.sh
 !tests/
