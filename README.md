@@ -39,6 +39,45 @@ jobs:
 
 That's the minimum. Everything else is optional — see below.
 
+## SHA-pinning (required for strict supply-chain policies)
+
+The Quickstart above and the GitHub Marketplace "Use latest version" button both give you a tag-based pin (`@v1`). That's fine for most repos. **If your repository or GitHub organization enforces SHA-pinning on every `uses:` reference** (for example, a repo ruleset or branch-protection rule that requires "Actions must be pinned to a full-length commit SHA"), the tag form will be rejected at run time with:
+
+```
+The action X is not allowed in <org>/<repo> because all actions must be pinned to a full-length commit SHA.
+```
+
+Replace the tag with a full 40-character commit SHA, keeping the version as a comment:
+
+```yaml
+      - uses: nerdalytics/check-action-versions@910163eda124120237a01bd990a5c1f107d29ce3 # v1.0.1
+```
+
+### Resolving the commit SHA
+
+**Via the GitHub UI:**
+
+1. Open the [tags page](https://github.com/nerdalytics/check-action-versions/tags) or [Releases page](https://github.com/nerdalytics/check-action-versions/releases)
+2. Click the tag you want (e.g. `v1.0.1` or the floating `v1`)
+3. The commit SHA appears in the page header; click it to see the full 40-character hash
+
+**Via `gh` CLI:**
+
+```sh
+# Commit SHA for a specific release tag
+gh api repos/nerdalytics/check-action-versions/commits/v1.0.1 --jq .sha
+
+# Commit SHA for the floating major tag
+gh api repos/nerdalytics/check-action-versions/commits/v1 --jq .sha
+```
+
+### Which tag to pin to — exact release or floating major
+
+- **Exact release** (`# v1.0.1`): the SHA never changes underneath you. You consciously bump when a new release ships — and this action itself will open that PR via its normal scan.
+- **Floating major** (`# v1`): the `v1` tag re-points to each new `v1.x.y`. Simpler in theory, but leaves a narrow window where a compromised maintainer could move `v1` to a malicious commit. For repos with a strict SHA-pin policy, prefer the exact release.
+
+The auto-updater always writes the exact release tag in the comment (never the floating `v1`), so once this action rewrites a pin for you, it stays on exact-release form.
+
 ## Permissions
 
 Your caller workflow needs `contents: write`, `issues: write`, `pull-requests: write`. Declare at workflow or job level.
