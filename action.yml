@@ -1,0 +1,204 @@
+name: 'Check Action Versions'
+description: 'Audit SHA-pinned GitHub Actions across workflow files. Opens a security issue and automated PR when outdated actions are detected.'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  committer-name:
+    description: "Git user.name for the automated commit"
+    required: true
+  committer-email:
+    description: "Git user.email for the automated commit"
+    required: true
+  commit-prefix:
+    description: "Prefix for commit message and PR title (e.g., 'chore(core):'). Empty = plain prose."
+    required: false
+    default: ""
+  scan-globs:
+    description: "Newline-separated glob list of workflow files to scan."
+    required: false
+    default: ".github/workflows/*.yml"
+  branch-name:
+    description: "PR branch name."
+    required: false
+    default: "update-github-actions"
+  outdated-behavior:
+    description: "both | pr-only | issue-only | dry-run"
+    required: false
+    default: "both"
+  up-to-date-behavior:
+    description: "close | keep | silent"
+    required: false
+    default: "close"
+  pr-labels:
+    description: "Comma-separated labels for the PR."
+    required: false
+    default: ""
+  issue-labels:
+    description: "Comma-separated labels for the issue."
+    required: false
+    default: ""
+  issue-title:
+    description: "Stable title used to find/update the tracking issue across runs."
+    required: false
+    default: "Security: Outdated GitHub Actions detected"
+  signing-method:
+    description: "ssh | gpg | '' (unsigned)"
+    required: false
+    default: ""
+  gh-pat:
+    description: "Personal Access Token for creating issues/PRs and pushing. Pass via ${{ secrets.YOUR_PAT }} at the call site for masking."
+    required: true
+  signing-key:
+    description: "SSH or GPG private key (required iff signing-method != ''). Pass via ${{ secrets.YOUR_KEY }}."
+    required: false
+    default: ""
+  signing-passphrase:
+    description: "Passphrase for signing-key (optional; only used if key is encrypted). Pass via ${{ secrets.YOUR_PASSPHRASE }}."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate signing secrets against signing-method
+      if: inputs.signing-method != ''
+      shell: bash
+      env:
+        SIGNING_METHOD: ${{ inputs.signing-method }}
+        SIGNING_KEY: ${{ inputs.signing-key }}
+      run: |
+        if [[ -n "$SIGNING_METHOD" && -z "$SIGNING_KEY" ]]; then
+          echo "ERROR: signing-method is '$SIGNING_METHOD' but signing-key input is empty."
+          echo "Either pass signing-key or set signing-method to ''."
+          exit 1
+        fi
+        case "$SIGNING_METHOD" in
+          ssh|gpg) ;;
+          *) echo "ERROR: signing-method must be 'ssh', 'gpg', or '' — got: '$SIGNING_METHOD'"; exit 1 ;;
+        esac
+
+    - name: Configure git identity
+      shell: bash
+      env:
+        COMMITTER_NAME: ${{ inputs.committer-name }}
+        COMMITTER_EMAIL: ${{ inputs.committer-email }}
+      run: |
+        git config user.name "$COMMITTER_NAME"
+        git config user.email "$COMMITTER_EMAIL"
+
+    - name: Scan workflow files for actions
+      id: scan
+      shell: bash
+      env:
+        SCAN_GLOBS: ${{ inputs.scan-globs }}
+      run: bash ${{ github.action_path }}/scripts/scan-actions.sh
+
+    - name: Resolve latest versions
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash ${{ github.action_path }}/scripts/resolve-latest.sh
+
+    - name: Compare current vs latest
+      id: compare
+      shell: bash
+      run: bash ${{ github.action_path }}/scripts/compare-actions.sh
+
+    - name: Generate report
+      if: steps.compare.outputs.has_outdated == 'true'
+      shell: bash
+      run: bash ${{ github.action_path }}/scripts/generate-report.sh
+
+    - name: Create or update tracking issue
+      if: >-
+        steps.compare.outputs.has_outdated == 'true' &&
+        (inputs.outdated-behavior == 'both' || inputs.outdated-behavior == 'issue-only')
+      id: issue
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-pat }}
+        GH_REPO: ${{ github.repository }}
+        ISSUE_TITLE: ${{ inputs.issue-title }}
+        ISSUE_LABELS: ${{ inputs.issue-labels }}
+      run: bash ${{ github.action_path }}/scripts/manage-issue.sh
+
+    - name: Apply updates to workflow files
+      if: >-
+        steps.compare.outputs.has_outdated == 'true' &&
+        (inputs.outdated-behavior == 'both' || inputs.outdated-behavior == 'pr-only')
+      id: apply
+      shell: bash
+      run: bash ${{ github.action_path }}/scripts/apply-updates.sh
+
+    - name: Configure SSH signing
+      if: steps.apply.outputs.changes_made == '1' && inputs.signing-method == 'ssh'
+      shell: bash
+      env:
+        SSH_SIGNING_KEY: ${{ inputs.signing-key }}
+        SSH_PASSPHRASE: ${{ inputs.signing-passphrase }}
+      run: |
+        mkdir -p ~/.ssh
+        printf '%s\n' "$SSH_SIGNING_KEY" > ~/.ssh/signing_key
+        chmod 600 ~/.ssh/signing_key
+        if [[ -n "$SSH_PASSPHRASE" ]]; then
+          ssh-keygen -p -P "$SSH_PASSPHRASE" -N "" -f ~/.ssh/signing_key
+        fi
+        git config gpg.format ssh
+        git config user.signingkey ~/.ssh/signing_key
+        git config commit.gpgsign true
+
+    - name: Configure GPG signing
+      if: steps.apply.outputs.changes_made == '1' && inputs.signing-method == 'gpg'
+      shell: bash
+      env:
+        GPG_SIGNING_KEY: ${{ inputs.signing-key }}
+        GPG_PASSPHRASE: ${{ inputs.signing-passphrase }}
+      run: |
+        echo "$GPG_SIGNING_KEY" | gpg --batch --import
+        KEY_ID=$(gpg --list-secret-keys --keyid-format=long | awk '/^sec/{split($2,a,"/"); print a[2]; exit}')
+        if [[ -n "$GPG_PASSPHRASE" ]]; then
+          KEYGRIP=$(gpg --with-keygrip --list-secret-keys "$KEY_ID" | awk '/Keygrip/{print $3; exit}')
+          HEX_PASS=$(printf '%s' "$GPG_PASSPHRASE" | xxd -p -c 1024 | tr -d '\n')
+          gpg-connect-agent "PRESET_PASSPHRASE $KEYGRIP -1 $HEX_PASS" /bye
+        fi
+        git config gpg.format openpgp
+        git config user.signingkey "$KEY_ID"
+        git config commit.gpgsign true
+
+    - name: Create branch and commit
+      if: steps.apply.outputs.changes_made == '1'
+      id: commit
+      shell: bash
+      env:
+        BRANCH_NAME: ${{ inputs.branch-name }}
+        COMMIT_PREFIX: ${{ inputs.commit-prefix }}
+      run: bash ${{ github.action_path }}/scripts/commit-changes.sh
+
+    - name: Push and create PR
+      if: >-
+        steps.commit.outputs.has_changes == 'true' &&
+        (inputs.outdated-behavior == 'both' || inputs.outdated-behavior == 'pr-only')
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-pat }}
+        GH_REPO: ${{ github.repository }}
+        ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
+        BRANCH_NAME: ${{ inputs.branch-name }}
+        BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        COMMIT_PREFIX: ${{ inputs.commit-prefix }}
+        PR_LABELS: ${{ inputs.pr-labels }}
+      run: bash ${{ github.action_path }}/scripts/manage-pr.sh
+
+    - name: Close issue and PR if all up-to-date
+      if: >-
+        steps.compare.outputs.has_outdated == 'false' &&
+        inputs.up-to-date-behavior == 'close'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-pat }}
+        GH_REPO: ${{ github.repository }}
+        ISSUE_TITLE: ${{ inputs.issue-title }}
+        BRANCH_NAME: ${{ inputs.branch-name }}
+      run: bash ${{ github.action_path }}/scripts/close-if-current.sh

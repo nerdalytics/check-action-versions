@@ -1,6 +1,6 @@
 # Check Action Versions
 
-A reusable GitHub workflow that audits the SHA-pinned `uses:` references in your workflow files, resolves each action's latest strict-semver release, and opens a security issue + automated PR when anything is outdated.
+A composite GitHub Action that audits the SHA-pinned `uses:` references in your workflow files, resolves each action's latest strict-semver release, and opens a security issue + automated PR when anything is outdated.
 
 - Runs on your schedule (weekly is typical)
 - Creates a single tracking issue, updates it on each run
@@ -25,23 +25,23 @@ on:
 
 jobs:
   check:
-    uses: nerdalytics/check-action-versions/.github/workflows/check-action-versions.yml@v1
-    with:
-      committer-name: your-bot-username
-      committer-email: your-bot-email@example.com
-    secrets:
-      GH_PAT: ${{ secrets.YOUR_PAT_SECRET_NAME }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
+      - uses: nerdalytics/check-action-versions@v1
+        with:
+          committer-name: your-bot-username
+          committer-email: your-bot-email@example.com
+          gh-pat: ${{ secrets.YOUR_PAT_SECRET_NAME }}
 ```
 
 That's the minimum. Everything else is optional — see below.
 
 ## Permissions
 
-Your caller workflow must also declare the permissions the action needs. GitHub
-applies the **intersection** of caller job-level permissions and the reusable
-workflow's declared permissions — if your caller doesn't grant them, the issue
-and PR steps will fail at runtime even though the action declares them
-internally. The Quickstart above shows the required top-level block:
+Your caller workflow needs `contents: write`, `issues: write`, `pull-requests: write`. Declare at workflow or job level.
 
 ```yaml
 permissions:
@@ -49,11 +49,6 @@ permissions:
   issues: write
   pull-requests: write
 ```
-
-Declaring them at workflow-level (as in Quickstart) applies by default to all
-jobs in the caller. If you use job-level `permissions:` overrides anywhere,
-make sure the job that calls this action retains write access to contents,
-issues, and pull-requests.
 
 ## Inputs
 
@@ -142,26 +137,28 @@ How automated commits are cryptographically signed:
 - `ssh` — SSH signing. Recommended when you want verified commits. See [Signing](#signing) below.
 - `gpg` — GPG signing. Supported for repos with existing GPG infrastructure, but SSH is simpler to set up and maintain.
 
-## Secrets
+## Secret-bearing inputs
 
-### `GH_PAT` — required
+Composite actions don't have a separate `secrets:` block — secret values are passed as regular inputs. Always reference them via `${{ secrets.NAME }}` at the call site so GitHub masks the value in logs.
+
+### `gh-pat` — required
 
 A Personal Access Token (classic) or fine-grained PAT with `repo` and `workflow` scopes on the target repo.
 
 **Why not `GITHUB_TOKEN`?** PRs opened by `GITHUB_TOKEN` do not trigger workflows. Your CI (lint, test, build) will not run on the automated PR, so you won't know if the update broke anything. A PAT from a bot account works around this.
 
-Store as a repo or org secret and pass via `secrets: GH_PAT:`.
+Store as a repo or org secret and pass via `gh-pat: ${{ secrets.YOUR_PAT_SECRET_NAME }}`.
 
-### `SIGNING_KEY` — optional
+### `signing-key` — optional
 
 Required iff `signing-method` is non-empty. Validated at runtime; the action fails fast with a clear error if set to `ssh` or `gpg` without a key.
 
 - For `ssh`: the full private key including the `-----BEGIN OPENSSH PRIVATE KEY-----` header and footer
 - For `gpg`: an armored private key block (`gpg --armor --export-secret-keys <key-id>`)
 
-### `SIGNING_PASSPHRASE` — optional
+### `signing-passphrase` — optional
 
-The passphrase protecting `SIGNING_KEY`. Leave unset if the key is unencrypted.
+The passphrase protecting `signing-key`. Leave unset if the key is unencrypted.
 
 ## Signing
 
@@ -201,10 +198,8 @@ One-time, per repo or per org:
    ```yaml
    with:
      signing-method: ssh
-   secrets:
-     GH_PAT: ${{ secrets.YOUR_PAT_SECRET_NAME }}
-     SIGNING_KEY: ${{ secrets.SSH_SIGNING_KEY }}
-     SIGNING_PASSPHRASE: ${{ secrets.SSH_SIGNING_KEY_PASSPHRASE }}
+     signing-key: ${{ secrets.SSH_SIGNING_KEY }}
+     signing-passphrase: ${{ secrets.SSH_SIGNING_KEY_PASSPHRASE }}
    ```
 
 5. **Verify** by triggering `workflow_dispatch` manually. The resulting commit in the automated PR should display "Verified" with a tooltip naming your bot account.
@@ -215,7 +210,7 @@ One-time, per repo or per org:
 2. Export the private key: `gpg --armor --export-secret-keys <key-id>`
 3. Register the **public** key on the bot's GitHub account under "SSH and GPG keys"
 4. Store private key + passphrase as secrets
-5. Pass `signing-method: gpg` and the secrets as shown in Quickstart
+5. Pass `signing-method: gpg`, `signing-key: ${{ secrets.GPG_PRIVATE_KEY }}`, and `signing-passphrase: ${{ secrets.GPG_PASSPHRASE }}` in the `with:` block of the action step
 
 The action sets up `gpg-agent` with a preset passphrase and configures `git commit.gpgsign true` for the duration of the job.
 
@@ -257,14 +252,14 @@ If you want full determinism despite the irony, pin to a specific release tag or
 
 ## Troubleshooting
 
-**"Secret GH_PAT is required but not supplied"**
-Your caller workflow is missing `secrets: GH_PAT: ...`. Add it.
+**"Input required and not supplied: gh-pat"**
+Your caller workflow is missing `gh-pat: ${{ secrets.YOUR_PAT_SECRET_NAME }}` in the `with:` block. Add it.
 
-**"signing-method is 'ssh' but no SIGNING_KEY secret was supplied"**
-Either pass `SIGNING_KEY` or set `signing-method` to empty.
+**"signing-method is 'ssh' but signing-key input is empty"**
+Either pass `signing-key` or set `signing-method` to empty.
 
 **PR opens but CI doesn't run on it**
-`GH_PAT` is actually `GITHUB_TOKEN`. Use a PAT from a bot account — see the `GH_PAT` section above.
+`gh-pat` is actually `GITHUB_TOKEN`. Use a PAT from a bot account — see the `gh-pat` section above.
 
 **Commit shows "Unverified" despite `signing-method: ssh`**
 The public key registered on the bot account is marked as an Authentication Key, not a Signing Key. GitHub distinguishes the two. Re-add it with the correct type.
