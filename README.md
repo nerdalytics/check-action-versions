@@ -1,15 +1,15 @@
 # Check Action Versions
 
-A composite GitHub Action that audits the SHA-pinned `uses:` references in your workflow files, resolves each action's latest strict-semver release, and opens a security issue + automated PR when anything is outdated.
+A composite GitHub Action that audits the `uses:` references in your workflow files, resolves each action's latest strict-semver release, and opens a security issue + automated PR when anything is outdated.
 
 - Runs on your schedule (weekly is typical)
 - Creates a single tracking issue, updates it on each run
-- Produces a signed, CI-triggering PR with the SHA and tag updates applied
+- Produces a CI-triggering PR (optionally SSH or GPG-signed) with the SHA and tag updates applied
 - Auto-closes the issue and PR when every action is back on its latest release
 
 ## Quickstart
 
-Add this to any repo you want audited:
+Add this to any repo you want audited. The action is pinned by commit SHA — the same form this action will produce for every other entry in your workflow files, and the form required by any repo or org with a strict supply-chain policy.
 
 ```yaml
 # .github/workflows/check-action-versions.yml
@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
-      - uses: nerdalytics/check-action-versions@v1
+      - uses: nerdalytics/check-action-versions@0d95f1ed70576169ff3c297057b7e3fcfb909a1a # v1.0.2
         with:
           committer-name: your-bot-username
           committer-email: your-bot-email@example.com
@@ -39,53 +39,34 @@ jobs:
 
 That's the minimum. Everything else is optional — see below.
 
-## SHA-pinning (required for strict supply-chain policies)
+The SHA shown above pins `v1.0.2`. For every subsequent release, this action itself will open a PR in your repo rewriting the pin to the new SHA + the new exact release name. See [Updating the pin](#updating-the-pin) below if you ever need to do it manually.
 
-The Quickstart above and the GitHub Marketplace "Use latest version" button both give you a tag-based pin (`@v1`). That's fine for most repos. **If your repository or GitHub organization enforces SHA-pinning on every `uses:` reference** (for example, a repo ruleset or branch-protection rule that requires "Actions must be pinned to a full-length commit SHA"), the tag form will be rejected at run time with:
+## Updating the pin
 
-```
-The action X is not allowed in <org>/<repo> because all actions must be pinned to a full-length commit SHA.
-```
+This action auto-maintains the pin in your workflow files — when a new `check-action-versions` release ships, a scheduled run will open a PR bumping the SHA + release comment to the new values. You almost never need to do this by hand.
 
-Replace the tag with a full 40-character commit SHA, keeping the version as a comment:
-
-```yaml
-      - uses: nerdalytics/check-action-versions@910163eda124120237a01bd990a5c1f107d29ce3 # v1.0.1
-```
-
-### Resolving the commit SHA
+If you do (initial install, or you've disabled the scheduled audit), resolve the current latest-release commit SHA:
 
 **Via the GitHub UI:**
 
-1. Open the [tags page](https://github.com/nerdalytics/check-action-versions/tags) or [Releases page](https://github.com/nerdalytics/check-action-versions/releases)
-2. Click the tag you want (e.g. `v1.0.1` or the floating `v1`)
-3. The commit SHA appears in the page header; click it to see the full 40-character hash
+1. Open the [Releases page](https://github.com/nerdalytics/check-action-versions/releases)
+2. Click the release you want (typically the latest)
+3. The commit SHA appears in the header; click it to see the full 40-character hash
 
 **Via `gh` CLI:**
 
 ```sh
 # Commit SHA for a specific release tag
-gh api repos/nerdalytics/check-action-versions/commits/v1.0.1 --jq .sha
-
-# Commit SHA for the floating major tag
-gh api repos/nerdalytics/check-action-versions/commits/v1 --jq .sha
+gh api repos/nerdalytics/check-action-versions/commits/v1.0.2 --jq .sha
 ```
 
-### What the comment means — exact release or floating major
-
-When you pin by SHA, the 40-char hash is what GitHub resolves. The comment (`# v1`, `# v1.0.1`) is documentation — it does not affect what runs. Both of these pins execute the same action:
+Paste the SHA into your `uses:` line with the release name as a comment:
 
 ```yaml
-- uses: nerdalytics/check-action-versions@0d95f1ed70576169ff3c297057b7e3fcfb909a1a # v1
-- uses: nerdalytics/check-action-versions@0d95f1ed70576169ff3c297057b7e3fcfb909a1a # v1.0.2
+      - uses: nerdalytics/check-action-versions@<40-char-commit-sha> # v1.0.2
 ```
 
-Moving the `v1` floating tag on GitHub has no effect on any workflow pinned by SHA — only the SHA matters. Both comment forms are equally secure.
-
-When a new release ships and the SHA changes, this action's auto-update path opens a PR rewriting your pin to the new SHA + the exact release name in the comment (`# v1.0.3`, never `# v1`). So whatever comment you type up front will normalize to exact-release form on first update. The choice is purely cosmetic:
-
-- `# v1.0.2` — concrete, matches what the auto-updater writes. Best if you want the comment to reflect the exact version you vetted.
-- `# v1` — brief, handy when grabbing the SHA via `gh api repos/.../commits/v1 --jq .sha`. Will get refreshed by the auto-updater on the next release.
+The comment is documentation only — GitHub resolves the action at the SHA. Both humans reading the file and this action's own update logic use the comment to confirm which release a given SHA corresponds to.
 
 ## Permissions
 
@@ -215,7 +196,7 @@ The passphrase protecting `signing-key`. Leave unset if the key is unencrypted.
 | Aspect | SSH | GPG |
 |--------|-----|-----|
 | Key format | One `OPENSSH PRIVATE KEY` file | Keyring + key ID + subkeys |
-| CI agent required | No (`ssh-keygen -p` strips passphrase in place) | Yes (`gpg-agent` with preset passphrase) |
+| Persistent agent required | No (`ssh-keygen -p` strips passphrase in place) | Yes (`gpg-agent` with preset passphrase) |
 | Passphrase handling | Single `ssh-keygen -p` call | `--pinentry-mode loopback` or agent preset |
 | Setup steps | 3 (generate, register, store secret) | 5+ (generate, export, register on GitHub, set up agent, configure git) |
 | Trust model on GitHub | Public key registered as "Signing Key" on committer's account | Same, plus expiration/subkey complexity |
@@ -254,13 +235,36 @@ One-time, per repo or per org:
 
 ### GPG setup
 
-1. Generate or identify an existing GPG signing key for the bot account
-2. Export the private key: `gpg --armor --export-secret-keys <key-id>`
-3. Register the **public** key on the bot's GitHub account under "SSH and GPG keys"
-4. Store private key + passphrase as secrets
-5. Pass `signing-method: gpg`, `signing-key: ${{ secrets.GPG_PRIVATE_KEY }}`, and `signing-passphrase: ${{ secrets.GPG_PASSPHRASE }}` in the `with:` block of the action step
+> **Note:** the GPG path in this action is implemented but has not been end-to-end validated against a real GPG workflow in production. The SSH path above is what the maintainers use. If you set up the GPG path and it works (or doesn't), please open an issue so we can confirm or fix it.
 
-The action sets up `gpg-agent` with a preset passphrase and configures `git commit.gpgsign true` for the duration of the job.
+1. **Generate or identify** an existing GPG signing key for the bot account:
+   ```sh
+   gpg --full-generate-key        # for a new key; choose "RSA and RSA" or "ECC"
+   gpg --list-secret-keys --keyid-format=long
+   ```
+
+2. **Export the armored private key:**
+   ```sh
+   gpg --armor --export-secret-keys <key-id> > bot-signing.gpg
+   ```
+
+3. **Register the public key** on the bot's GitHub account:
+    - Settings → SSH and GPG keys → **New GPG key**
+    - Export with `gpg --armor --export <key-id>` and paste
+
+4. **Store the secrets** in the target repo (or an org-level secret):
+    - `GPG_PRIVATE_KEY` (or any name) — full armored content of `bot-signing.gpg`
+    - `GPG_PASSPHRASE` — the passphrase on the key (omit if none)
+
+5. **Reference the secrets** in your caller workflow:
+   ```yaml
+   with:
+     signing-method: gpg
+     signing-key: ${{ secrets.GPG_PRIVATE_KEY }}
+     signing-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+   ```
+
+During the run the action imports the key, extracts its key ID, presets the passphrase into `gpg-agent`, and configures `git` with `gpg.format openpgp` + `commit.gpgsign true` for the duration of the job.
 
 ### No signing
 
@@ -278,25 +282,11 @@ You do not pass these — the action reads them from the workflow context:
 
 If your repo's default branch is `trunk` or `develop`, the PR targets that — no input needed.
 
-## Security design notes
-
-This action has no defaults for any value that reveals caller-specific information (identity, secret names, signing conventions, branch names tied to individual repos). The reasoning:
-
-- The action repo is public
-- Attackers reading a public action's source gain reconnaissance for free — "this action defaults to `ACTION_UPDATER_PAT` as the PAT secret name" narrows a spray attack
-- Defaults for generic GitHub-universal conventions (e.g., workflow files live at `.github/workflows/*.yml`) are safe — they reveal nothing not already known about every GitHub repo
-- Defaults for repo-specific opinion (identity, prefixes, secret names) are not safe — they leak the reference design, which is inevitably copied
-
-Every required input's absence causes the workflow to refuse to start. Every optional input's absence either disables a feature or falls back to a generic placeholder that tells an attacker nothing.
-
 ## Versioning
 
-- Release tags `v1.0.0`, `v1.0.1`, ...
-- Floating major-version tag `v1` moves to the latest `v1.x.y` release
-- Consumers typically pin to `@v1`
-- Breaking input-contract changes ship as `v2`; `v1` stops advancing so existing consumers are not broken
-
-If you want full determinism despite the irony, pin to a specific release tag or SHA.
+- Release tags `v1.0.0`, `v1.0.1`, `v1.0.2`, …
+- Consumers pin by commit SHA — see [Quickstart](#quickstart) and [Updating the pin](#updating-the-pin). The comment next to the SHA is the release name, which this action's own update logic rewrites whenever a newer release ships.
+- Breaking input-contract changes ship as `v2.0.0`; the `v1.x.y` line stops advancing at that point so existing consumers are not broken.
 
 ## Troubleshooting
 
@@ -312,11 +302,14 @@ Either pass `signing-key` or set `signing-method` to empty.
 **Commit shows "Unverified" despite `signing-method: ssh`**
 The public key registered on the bot account is marked as an Authentication Key, not a Signing Key. GitHub distinguishes the two. Re-add it with the correct type.
 
-**Tag `latest_tag` not valid semver — action skipped**
-The action requires strict `vX.Y.Z` tags. An upstream action that only tags `v1` or ships non-semver releases will be silently skipped (with a warning in the log). File an issue if this affects an action you depend on.
+**"Warning: latest release tag '…' is not strict semver, trying tags API"**
+This action compares by strict `vX.Y.Z` release tags. When the upstream you're auditing only ships non-semver releases (for example, a release tagged just `latest` or `v1`), the action falls back to the tags API to find the most recent strict-semver tag, and logs this warning while it does. If the fallback also finds nothing, the upstream is silently skipped for that run.
 
 **Action finds zero `uses:` references**
 Your workflows may be in `.yaml` files, not `.yml`. Override `scan-globs`.
+
+**"The action X is not allowed in <org>/<repo> because all actions must be pinned to a full-length commit SHA"**
+Your repo or GitHub org has a policy requiring SHA-pinning on every `uses:` reference. The tag form (`@v1.0.2`) is rejected. See [Updating the pin](#updating-the-pin) for how to resolve the commit SHA and pin by hash. Subsequent updates happen automatically.
 
 ## License
 
