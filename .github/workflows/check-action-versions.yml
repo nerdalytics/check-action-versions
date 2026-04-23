@@ -1,0 +1,31 @@
+name: Check Action Versions
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # Monday 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.ACTION_UPDATER_PAT }}
+
+      - uses: nerdalytics/check-action-versions@11a5116015b39e4ef354d6eaa5c8757a338100de # v1.0.3
+        with:
+          committer-name: nerdalytics
+          committer-email: 97166791+nerdalytics@users.noreply.github.com
+          commit-prefix: 'chore(deps):'
+          branch-name: automation/update-github-actions
+          pr-labels: 'security,dependencies'
+          issue-labels: 'security,dependencies'
+          signing-method: ssh
+          gh-pat: ${{ secrets.ACTION_UPDATER_PAT }}
+          signing-key: ${{ secrets.SSH_SIGNING_KEY }}
+          signing-passphrase: ${{ secrets.SSH_SIGNING_KEY_PASSPHRASE }}
